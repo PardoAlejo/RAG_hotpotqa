@@ -19,6 +19,7 @@ ujson>=5.8.0
 
 # Utilities
 tqdm>=4.65.0
+streamlit>=1.28.0
 
 # Optional: For better performance
 # faiss-cpu>=1.7.4  # For efficient dense retrieval
