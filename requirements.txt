@@ -1,0 +1,25 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Retrieval systems
+rank-bm25>=0.2.2
+sentence-transformers>=2.2.2
+
+# Reranking
+transformers>=4.30.0
+torch>=2.0.0
+
+# LLM integration (choose based on your needs)
+# openai>=1.0.0
+# anthropic>=0.3.0
+
+# Data processing
+ujson>=5.8.0
+
+# Utilities
+tqdm>=4.65.0
+
+# Optional: For better performance
+# faiss-cpu>=1.7.4  # For efficient dense retrieval
+# faiss-gpu>=1.7.4  # GPU version
