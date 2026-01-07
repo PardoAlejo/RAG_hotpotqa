@@ -67,3 +67,6 @@ credentials.json
 # Cache
 .cache/
 *.cache
+
+# Documentation
+CLAUDE.md
