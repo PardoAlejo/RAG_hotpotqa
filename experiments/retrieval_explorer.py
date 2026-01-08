@@ -14,6 +14,12 @@ import streamlit as st
 from retrievers.bm25_retriever import BM25Retriever
 from retrievers.dense_retriever import DenseRetriever
 from retrievers.hybrid_retriever import HybridRetriever
+from retrievers.model_configs import (
+    AVAILABLE_MODELS,
+    DEFAULT_MODEL,
+    get_full_model_name,
+    list_available_models
+)
 from utils.data_loader import HotpotQADataset
 
 
@@ -55,15 +61,16 @@ def build_corpus(data, max_items):
 
 
 @st.cache_resource
-def initialize_retrievers(corpus, alpha):
+def initialize_retrievers(corpus, alpha, model_key):
     """Initialize all retrievers."""
     bm25 = BM25Retriever()
     bm25.index(corpus)
 
-    dense = DenseRetriever()
+    model_name = get_full_model_name(model_key)
+    dense = DenseRetriever(model_name=model_name)
     dense.index(corpus)
 
-    hybrid = HybridRetriever(alpha=alpha)
+    hybrid = HybridRetriever(alpha=alpha, dense_model_name=model_name)
     hybrid.index(corpus)
 
     return bm25, dense, hybrid
@@ -99,6 +106,42 @@ def main():
 
     # Sidebar configuration
     st.sidebar.header("Configuration")
+
+    # Model selection
+    st.sidebar.subheader("🤖 Embedding Model")
+
+    available_model_keys = list_available_models()
+    model_options = [AVAILABLE_MODELS[key]["display_name"] for key in available_model_keys]
+
+    selected_display_name = st.sidebar.selectbox(
+        "Choose Model",
+        options=model_options,
+        index=0,
+        help="Select the sentence transformer model for dense/hybrid retrieval"
+    )
+
+    # Get the model key from display name
+    selected_model_key = [k for k, v in AVAILABLE_MODELS.items()
+                          if v["display_name"] == selected_display_name][0]
+
+    # Display model info
+    model_info = AVAILABLE_MODELS[selected_model_key]
+    st.sidebar.caption(f"**{model_info['description']}**")
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("Size", f"{model_info['size_mb']}MB")
+        st.caption(f"Speed: {model_info['speed']}")
+    with col2:
+        st.metric("Dim", model_info['embedding_dim'])
+        st.caption(f"Quality: {model_info['quality']}")
+
+    with st.sidebar.expander("ℹ️ Model Details"):
+        st.write(f"**Use Case:** {model_info['use_case']}")
+        st.code(model_info['full_name'])
+        st.info("💡 First time using a model will compute embeddings. Switching back to a previously used model is instant (cached).")
+
+    st.sidebar.markdown("---")
 
     question_idx = st.sidebar.number_input(
         "Question Index",
@@ -142,7 +185,7 @@ def main():
 
     # Initialize retrievers
     with st.spinner("Initializing retrievers (may take a moment on first run)..."):
-        bm25, dense, hybrid = initialize_retrievers(corpus, alpha)
+        bm25, dense, hybrid = initialize_retrievers(corpus, alpha, selected_model_key)
 
     st.sidebar.success("✓ Retrievers ready")
 
@@ -217,8 +260,8 @@ def main():
                 st.divider()
 
     with col2:
-        st.subheader("🧠 Dense (Neural)")
-        st.caption("Semantic embedding similarity")
+        st.subheader(f"🧠 Dense ({model_info['display_name']})")
+        st.caption(f"Semantic embedding similarity | {model_info['size_mb']}MB")
         for i, (doc, score) in enumerate(dense_results[:top_k], 1):
             is_supporting = (doc['title'], doc['sent_id']) in support_set
             with st.container():
@@ -227,7 +270,7 @@ def main():
 
     with col3:
         st.subheader(f"⚖️ Hybrid (α={alpha})")
-        st.caption("Combined lexical + semantic")
+        st.caption(f"BM25 + {model_info['display_name']} | Combined scoring")
         for i, (doc, score) in enumerate(hybrid_results[:top_k], 1):
             is_supporting = (doc['title'], doc['sent_id']) in support_set
             with st.container():

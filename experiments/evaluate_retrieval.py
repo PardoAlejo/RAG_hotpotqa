@@ -18,6 +18,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from retrievers.bm25_retriever import BM25Retriever
 from retrievers.dense_retriever import DenseRetriever
 from retrievers.hybrid_retriever import HybridRetriever
+from retrievers.model_configs import (
+    get_full_model_name,
+    list_available_models,
+    DEFAULT_MODEL
+)
 from utils.data_loader import HotpotQADataset
 from tqdm import tqdm
 
@@ -141,6 +146,9 @@ def main():
                         help='Number of documents to retrieve')
     parser.add_argument('--alpha', type=float, default=0.5,
                         help='Alpha for hybrid retrieval (ignored for others)')
+    parser.add_argument('--model', type=str, default=DEFAULT_MODEL,
+                        choices=list_available_models(),
+                        help=f'Embedding model for dense/hybrid retrieval (default: {DEFAULT_MODEL})')
     parser.add_argument('--output', type=str, default=None,
                         help='Output file for results (JSON)')
     args = parser.parse_args()
@@ -172,15 +180,17 @@ def main():
 
     # Initialize retriever
     print(f"\nInitializing {args.retriever} retriever...")
+    model_name = get_full_model_name(args.model)
+
     if args.retriever == 'bm25':
         retriever = BM25Retriever()
         retriever_name = "BM25"
     elif args.retriever == 'dense':
-        retriever = DenseRetriever()
-        retriever_name = "Dense"
+        retriever = DenseRetriever(model_name=model_name)
+        retriever_name = f"Dense ({args.model})"
     elif args.retriever == 'hybrid':
-        retriever = HybridRetriever(alpha=args.alpha)
-        retriever_name = f"Hybrid (alpha={args.alpha})"
+        retriever = HybridRetriever(alpha=args.alpha, dense_model_name=model_name)
+        retriever_name = f"Hybrid (alpha={args.alpha}, model={args.model})"
 
     retriever.index(corpus)
 

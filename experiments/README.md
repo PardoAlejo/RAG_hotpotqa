@@ -15,12 +15,19 @@ streamlit run retrieval_explorer.py
 
 **Features:**
 - Compare BM25, Dense, and Hybrid retrieval visually
+- **🆕 Choose between 3 embedding models** with different speed/quality trade-offs
 - Adjust parameters interactively (top-k, alpha, corpus size)
 - See which documents are supporting facts (highlighted in green)
 - Navigate through questions easily
+- View model size, speed, and quality indicators
 - Perfect for qualitative analysis and debugging
 
 **Best for:** Understanding *why* retrievers behave the way they do
+
+**Available Embedding Models:**
+- **MiniLM-L6 (Fast)**: 80MB, ⚡⚡⚡ fastest, ⭐⭐⭐ good for quick experiments
+- **DistilRoBERTa (Balanced)**: 290MB, ⚡⚡ medium speed, ⭐⭐⭐⭐ best quality/speed trade-off
+- **MPNet-Base (Highest Quality)**: 420MB, ⚡ slower but ⭐⭐⭐⭐⭐ highest quality
 
 ---
 
@@ -33,11 +40,14 @@ Quantitative evaluation of a single retriever on N questions.
 # Evaluate BM25 on 100 questions
 python evaluate_retrieval.py --retriever bm25 --num_questions 100
 
-# Evaluate Dense retrieval
+# Evaluate Dense retrieval with default model
 python evaluate_retrieval.py --retriever dense --num_questions 50
 
-# Evaluate Hybrid with alpha=0.7
-python evaluate_retrieval.py --retriever hybrid --alpha 0.7 --num_questions 100
+# Evaluate Dense with MPNet model
+python evaluate_retrieval.py --retriever dense --model all-mpnet-base-v2 --num_questions 50
+
+# Evaluate Hybrid with alpha=0.7 and DistilRoBERTa
+python evaluate_retrieval.py --retriever hybrid --alpha 0.7 --model all-distilroberta-v1 --num_questions 100
 ```
 
 **Parameters:**
@@ -46,6 +56,7 @@ python evaluate_retrieval.py --retriever hybrid --alpha 0.7 --num_questions 100
 - `--corpus_size`: Number of questions to build corpus from (default: 100)
 - `--top_k`: Number of documents to retrieve (default: 20)
 - `--alpha`: For hybrid retrieval only (default: 0.5)
+- `--model`: Embedding model for dense/hybrid (choices: `all-MiniLM-L6-v2`, `all-mpnet-base-v2`, `all-distilroberta-v1`)
 - `--output`: Output JSON file name (auto-generated if not specified)
 
 **Outputs:**
@@ -67,8 +78,14 @@ Run systematic experiments comparing multiple retrievers and generate a report t
 # Compare all three retrievers
 python run_experiment.py --name "Initial Comparison" --compare_all --num_questions 100
 
-# Compare specific retrievers
-python run_experiment.py --name "BM25 vs Dense" --retrievers bm25 dense --num_questions 200
+# Compare all embedding models (Dense retrieval only)
+python run_experiment.py --name "Model Comparison" --compare_models --num_questions 100
+
+# Compare specific retrievers with a specific model
+python run_experiment.py --name "BM25 vs Dense" --retrievers bm25 dense --model all-mpnet-base-v2 --num_questions 200
+
+# Test hybrid with different model
+python run_experiment.py --name "Hybrid MPNet" --retrievers hybrid --model all-mpnet-base-v2 --num_questions 50
 
 # Quick test
 python run_experiment.py --name "Quick Test" --compare_all --num_questions 20
@@ -76,8 +93,10 @@ python run_experiment.py --name "Quick Test" --compare_all --num_questions 20
 
 **Parameters:**
 - `--name`: Experiment name (required)
-- `--compare_all`: Test all retrievers (bm25, dense, hybrid)
+- `--compare_all`: Test all retrievers (bm25, dense, hybrid) with selected model
+- `--compare_models`: **🆕 Compare all embedding models** (runs dense with each model)
 - `--retrievers`: Specify which retrievers to test
+- `--model`: Embedding model to use (default: all-MiniLM-L6-v2)
 - `--num_questions`: Number of questions (default: 100)
 - `--corpus_size`: Corpus size (default: 100)
 - `--top_k`: Documents to retrieve (default: 20)
@@ -151,12 +170,25 @@ python run_experiment.py --name "BM25 vs Dense" --retrievers bm25 dense --num_qu
 streamlit run retrieval_explorer.py
 ```
 
-### Week 3: Hybrid Optimization
+### Week 3: Model Comparison
 ```bash
-# Test different alpha values
-python evaluate_retrieval.py --retriever hybrid --alpha 0.3 --num_questions 100
-python evaluate_retrieval.py --retriever hybrid --alpha 0.5 --num_questions 100
-python evaluate_retrieval.py --retriever hybrid --alpha 0.7 --num_questions 100
+# Compare all embedding models
+python run_experiment.py --name "Embedding Model Comparison" --compare_models --num_questions 100
+
+# Or compare individually
+python evaluate_retrieval.py --retriever dense --model all-MiniLM-L6-v2 --num_questions 100
+python evaluate_retrieval.py --retriever dense --model all-mpnet-base-v2 --num_questions 100
+python evaluate_retrieval.py --retriever dense --model all-distilroberta-v1 --num_questions 100
+
+# Understand quality vs speed trade-offs
+```
+
+### Week 4: Hybrid Optimization
+```bash
+# Test different alpha values with different models
+python evaluate_retrieval.py --retriever hybrid --alpha 0.3 --model all-mpnet-base-v2 --num_questions 100
+python evaluate_retrieval.py --retriever hybrid --alpha 0.5 --model all-mpnet-base-v2 --num_questions 100
+python evaluate_retrieval.py --retriever hybrid --alpha 0.7 --model all-mpnet-base-v2 --num_questions 100
 
 # Find optimal balance
 ```

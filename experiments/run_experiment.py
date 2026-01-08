@@ -15,8 +15,14 @@ import subprocess
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from retrievers.model_configs import (
+    AVAILABLE_MODELS,
+    DEFAULT_MODEL,
+    list_available_models
+)
 
-def run_evaluation(retriever, num_questions, corpus_size, top_k, alpha=0.5):
+
+def run_evaluation(retriever, num_questions, corpus_size, top_k, alpha=0.5, model=DEFAULT_MODEL):
     """Run evaluation for a single retriever configuration."""
     cmd = [
         'python', 'evaluate_retrieval.py',
@@ -29,8 +35,12 @@ def run_evaluation(retriever, num_questions, corpus_size, top_k, alpha=0.5):
     if retriever == 'hybrid':
         cmd.extend(['--alpha', str(alpha)])
 
+    # Add model parameter for dense and hybrid retrievers
+    if retriever in ['dense', 'hybrid']:
+        cmd.extend(['--model', model])
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"results_{retriever}_{timestamp}.json"
+    output_file = f"results_{retriever}_{model}_{timestamp}.json"
     cmd.extend(['--output', output_file])
 
     print(f"\nRunning: {' '.join(cmd)}")
@@ -50,10 +60,20 @@ def compare_results(results_list):
     print("COMPARISON ACROSS RETRIEVERS")
     print("=" * 80)
 
-    # Extract metrics for comparison
-    retrievers = [r['config']['retriever'] for r in results_list]
+    # Extract metrics for comparison with model info
+    retriever_labels = []
+    for r in results_list:
+        retriever = r['config']['retriever']
+        model = r['config'].get('model', 'N/A')
+        if retriever in ['dense', 'hybrid'] and model != 'N/A':
+            model_display = AVAILABLE_MODELS.get(model, {}).get('display_name', model)
+            retriever_labels.append(f"{retriever}({model_display})")
+        else:
+            retriever_labels.append(retriever)
 
-    print(f"\n{'Metric':<20} " + " ".join(f"{r:>12}" for r in retrievers))
+    # Print header
+    max_label_len = max(len(label) for label in retriever_labels)
+    print(f"\n{'Metric':<20} " + " ".join(f"{label:>{max_label_len}}" for label in retriever_labels))
     print("-" * 80)
 
     # Compare key metrics
@@ -65,13 +85,20 @@ def compare_results(results_list):
             else:
                 values.append(0.0)
 
-        print(f"{metric:<20} " + " ".join(f"{v:>12.4f}" for v in values))
+        print(f"{metric:<20} " + " ".join(f"{v:>{max_label_len}.4f}" for v in values))
 
     # Winner summary
     print("\n" + "-" * 80)
-    print("Best Performer:")
-    best_idx = max(range(len(values)), key=lambda i: values[i])
-    print(f"  {retrievers[best_idx]} with Recall@5 = {values[best_idx]:.4f}")
+    print("Best Performer by Recall@5:")
+    recall_5_values = []
+    for result in results_list:
+        if 'recall@5' in result['aggregated_metrics']:
+            recall_5_values.append(result['aggregated_metrics']['recall@5']['mean'])
+        else:
+            recall_5_values.append(0.0)
+
+    best_idx = max(range(len(recall_5_values)), key=lambda i: recall_5_values[i])
+    print(f"  {retriever_labels[best_idx]} with Recall@5 = {recall_5_values[best_idx]:.4f}")
 
 
 def generate_report_template(experiment_name, results_files):
@@ -98,19 +125,33 @@ def generate_report_template(experiment_name, results_files):
             with open(result_file, 'r') as rf:
                 result = json.load(rf)
                 retriever = result['config']['retriever']
+                model = result['config'].get('model', 'N/A')
+
                 f.write(f"### {retriever.upper()}\n")
-                f.write(f"- Configuration: [DESCRIBE PARAMETERS]\n")
+                if retriever in ['dense', 'hybrid'] and model != 'N/A':
+                    model_info = AVAILABLE_MODELS.get(model, {})
+                    f.write(f"- **Model:** {model_info.get('display_name', model)}\n")
+                    f.write(f"- **Size:** {model_info.get('size_mb', 'N/A')}MB\n")
+                    f.write(f"- **Speed:** {model_info.get('speed', 'N/A')}\n")
+                    f.write(f"- **Quality:** {model_info.get('quality', 'N/A')}\n")
+                f.write(f"- Configuration: [DESCRIBE ANY ADDITIONAL PARAMETERS]\n")
                 f.write(f"- Results file: `{result_file}`\n\n")
 
         f.write("## Results\n\n")
         f.write("### Quantitative Metrics\n\n")
-        f.write("| Retriever | Recall@1 | Recall@5 | Recall@10 | Precision@5 |\n")
-        f.write("|-----------|----------|----------|-----------|-------------|\n")
+        f.write("| Method | Model | Recall@1 | Recall@5 | Recall@10 | Precision@5 |\n")
+        f.write("|--------|-------|----------|----------|-----------|-------------|\n")
 
         for result_file in results_files:
             with open(result_file, 'r') as rf:
                 result = json.load(rf)
                 retriever = result['config']['retriever']
+                model = result['config'].get('model', '-')
+                if model != '-' and model in AVAILABLE_MODELS:
+                    model_display = AVAILABLE_MODELS[model]['display_name']
+                else:
+                    model_display = '-'
+
                 metrics = result['aggregated_metrics']
 
                 r1 = metrics.get('recall@1', {}).get('mean', 0)
@@ -118,7 +159,7 @@ def generate_report_template(experiment_name, results_files):
                 r10 = metrics.get('recall@10', {}).get('mean', 0)
                 p5 = metrics.get('precision@5', {}).get('mean', 0)
 
-                f.write(f"| {retriever:9s} | {r1:.4f}   | {r5:.4f}   | {r10:.4f}    | {p5:.4f}      |\n")
+                f.write(f"| {retriever:7s} | {model_display:20s} | {r1:.4f}   | {r5:.4f}   | {r10:.4f}    | {p5:.4f}      |\n")
 
         f.write("\n### Key Findings\n\n")
         f.write("1. **What worked well:**\n")
@@ -188,6 +229,11 @@ def main():
     parser.add_argument('--retrievers', nargs='+',
                         choices=['bm25', 'dense', 'hybrid'],
                         help='Specific retrievers to test')
+    parser.add_argument('--model', type=str, default=DEFAULT_MODEL,
+                        choices=list_available_models(),
+                        help=f'Embedding model for dense/hybrid (default: {DEFAULT_MODEL})')
+    parser.add_argument('--compare_models', action='store_true',
+                        help='Compare all available embedding models (runs dense retrieval with each model)')
     args = parser.parse_args()
 
     print("=" * 80)
@@ -195,24 +241,35 @@ def main():
     print("=" * 80)
 
     # Determine which retrievers to run
-    if args.compare_all:
-        retrievers_to_test = ['bm25', 'dense', 'hybrid']
+    if args.compare_models:
+        # Compare all models using dense retrieval
+        print("\nMode: Comparing embedding models with dense retrieval")
+        retrievers_to_test = [('dense', model) for model in list_available_models()]
+    elif args.compare_all:
+        retrievers_to_test = [('bm25', None), ('dense', args.model), ('hybrid', args.model)]
     elif args.retrievers:
-        retrievers_to_test = args.retrievers
+        retrievers_to_test = [(r, args.model if r in ['dense', 'hybrid'] else None) for r in args.retrievers]
     else:
-        print("Error: Specify either --compare_all or --retrievers")
+        print("Error: Specify either --compare_all, --compare_models, or --retrievers")
         sys.exit(1)
 
     # Run evaluations
     results_list = []
     result_files = []
 
-    for retriever in retrievers_to_test:
+    for retriever_config in retrievers_to_test:
+        if isinstance(retriever_config, tuple):
+            retriever, model = retriever_config
+        else:
+            retriever = retriever_config
+            model = args.model if retriever in ['dense', 'hybrid'] else DEFAULT_MODEL
+
         result, result_file = run_evaluation(
             retriever,
             args.num_questions,
             args.corpus_size,
-            args.top_k
+            args.top_k,
+            model=model if model else DEFAULT_MODEL
         )
 
         if result:
